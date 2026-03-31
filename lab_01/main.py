@@ -9,7 +9,8 @@ import plotly.graph_objects as go
 
 
 def taylor_4(x: float) -> float:
-    """Приближение рядом Тейлора (4 члена): u(x) approx 1 - x/2 + x^2/24 - x^3/720"""
+    """Приближение рядом Тейлора (4 члена): u(x) approx 1 - x/2 + x^2/24 - x^3/720
+    """
     return 1.0 - x / 2.0 + x * x / 24.0 - x * x * x / 720.0
 
 
@@ -26,7 +27,7 @@ def euler_task1(x_end: float, step: float) -> list[tuple[float, float]]:
     Особенность при x=0: стартуем с x_0 = epsilon, используя ряд для начальных значений.
     """
     u = taylor_4(step)
-    # u'(x) approx -1/2 + x/12 - x^2/240
+
     u_deriv = -0.5 + step / 12.0 - step * step / 240.0
 
     results = [(0.0, 1.0), (step, u)]
@@ -322,27 +323,9 @@ def run_task3():
 
 
 def main():
-    tasks = sys.argv[1:]
-
-    if not tasks:
-        run_task1()
-        run_task2()
-        run_task3()
-    else:
-        for arg in tasks:
-            match arg:
-                case "1":
-                    run_task1()
-                case "2":
-                    run_task2()
-                case "3":
-                    run_task3()
-                case _:
-                    print(
-                        f"Неизвестная задача: {arg}. Допустимые: 1, 2, 3",
-                        file=sys.stderr,
-                    )
-
+    run_task1()
+    run_task2()
+    run_task3()
 
 if __name__ == "__main__":
     main()
