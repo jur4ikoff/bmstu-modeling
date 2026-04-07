@@ -1,286 +1,280 @@
-import numpy as np
+import math
 import matplotlib.pyplot as plt
 
-R = 0.35
-l = 12
-L_k = 187 * (10**(-6))
-C_k = 268 * (10**(-6))
+R_radius = 0.35
+l_p = 12.0
+L_k = 187e-6
+C_k = 268e-6
 R_k = 0.25
-R_k2 = - 0.35
-U_co = 1400
-I_o = 3
-T_w = 2000
+U_0 = 1400.0
+I_0 = 0.5
+T_w = 2000.0
 
-I_table = [0.5, 1, 5, 10, 50, 200, 400, 800, 1200]
-T0_I_table = [6730, 6790, 7150, 7270, 8010, 9185, 10010, 11140, 12010]
-m_I_table = [0.50, 0.55, 1.7, 3, 11, 32, 40, 41, 39]
-T_sigma_table = [4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 13000, 14000]
-Sigma_table = [0.031, 0.27, 2.05, 6.06, 12.0, 19.9, 29.6, 41.1, 54.1, 67.7, 81.5]
+table1_I = [0.5, 1, 5, 10, 50, 200, 400, 800, 1200]
+table1_T0 = [6730, 6790, 7150, 7270, 8010, 9185, 10010, 11140, 12010]
+table1_m = [0.50, 0.55, 1.7, 3, 11, 32, 40, 41, 39]
 
-R_k_fix = 0.25
-
-def f(t, I, U):
-    return (U - (R_k + R) * I) / L_k
-
-def T_z(T0, z, m):
-    return T0 + (T_w - T0) * z**m
-
-def get_sigma_z(z, curr_T0, curr_m):
-    T_z = curr_T0 + (T_w - curr_T0) * (z**curr_m)
-    sigma = lagrange_interp(T_sigma_table, Sigma_table, T_z)
-    return sigma * z
+table2_T = [
+    4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 13000, 14000
+]
+table2_sigma = [
+    0.031, 0.27, 2.05, 6.06, 12.0, 19.9, 29.6, 41.1, 54.1, 67.7, 81.5
+]
 
 
-def integrate_simpson(curr_T0, curr_m, steps=100):
-    if steps % 2 != 0:
-        steps += 1
-        
+def interpolate(x, x_data, y_data):
+    if x <= x_data[0]:
+        return y_data[0]
+
+    if x >= x_data[-1]:
+        return y_data[-1]
+
+    for i in range(len(x_data) - 1):
+        if x_data[i] <= x <= x_data[i + 1]:
+            x1, x2 = x_data[i], x_data[i + 1]
+            y1, y2 = y_data[i], y_data[i + 1]
+
+            return y1 + (y2 - y1) * (x - x1) / (x2 - x1)
+
+    return y_data[-1]
+
+
+def integrate_sigma(T0, m, steps=40):
     h = 1.0 / steps
-    
-    res = get_sigma_z(0, curr_T0, curr_m) + get_sigma_z(1, curr_T0, curr_m)
-    
-    for i in range(1, steps):
+    integral = 0.0
+
+    for i in range(steps + 1):
         z = i * h
-        if i % 2 != 0:
-            res += 4 * get_sigma_z(z, curr_T0, curr_m)
+        T_z = T0 + (T_w - T0) * (z**m)
+        sigma_z = interpolate(T_z, table2_T, table2_sigma)
+
+        f_z = sigma_z * z
+
+        if i == 0 or i == steps:
+            weight = 1
+        elif i % 2 == 1:
+            weight = 4
         else:
-            res += 2 * get_sigma_z(z, curr_T0, curr_m)
-            
+            weight = 2
 
-    return (h / 3.0) * res
+        integral += weight * f_z
 
-# сопротивление R_p для текущего тока
-def calc_rp(current):
-    curr_T0 = lagrange_interp(I_table, T0_I_table, current)
-    curr_m = lagrange_interp(I_table, m_I_table, current)
-    
-    integral_val = integrate_simpson(curr_T0, curr_m)
-    
-    denom = 2 * np.pi * (R**2) * integral_val
-    return l / denom, curr_T0
+    return integral * (h / 3.0)
 
 
-# интерполяция чепрез полином лагранжа
-def lagrange_interp(x_table, y_table, x_val):
-    locality = 4
-    size = len(x_table)
-    idx = 0
-    # x_table[idx] <= x_val <= x_table[idx + 1]
-    while idx < size and x_table[idx] < x_val:
-        idx += 1
+def get_Rp_and_T0(I):
+    abs_I = abs(I)
 
-    half = locality // 2
-    left = idx - half
-    right = left + locality
+    T0 = interpolate(abs_I, table1_I, table1_T0)
+    m = interpolate(abs_I, table1_I, table1_m)
 
-    if left < 0:
-        left = 0
-        right = locality
-    if right > size:
-        right = size
-        left = size - locality
+    integral_val = integrate_sigma(T0, m)
 
-    x_window = x_table[left:right]
-    y_window = y_table[left:right]
-    
-    res = 0
-    for i in range(locality):
-        term = y_window[i]
-        for j in range(locality):
-            if i != j:
-                term *= (x_val - x_window[j]) / (x_window[i] - x_window[j]) 
-        res += term
+    if integral_val < 1e-12:
+        integral_val = 1e-12
 
-    return res
+    Rp = l_p / (2 * math.pi * (R_radius**2) * integral_val)
 
-def system_odes(I, U, Rp):
-    """ Правые части системы ОДУ """
-    dI_dt = (U - (R_k + Rp) * I) / L_k
-    dU_dt = -I / C_k
-    return dI_dt, dU_dt
+    return Rp, T0
 
-def multiply_arrs(arr1, arr2):
-    res = [0 for _ in range(len(arr1))]
-    for i in range(len(arr1)):
-        res[i] = arr1[i] * arr2[i]
-    return res
 
-def solve_system(mode="plasma", t_end=600e-6):
-    t, dt = 0, 1e-7
-    curr_I, curr_U = I_o, U_co
-    res_t, res_I, res_U, res_Rp, res_T0 = [], [], [], [], []
+def solve_circuit(t_max, h, mode="standard"):
+    t = 0.0
+    I = I_0
+    U = U_0
 
-    while t <= t_end:
-        rp, t0 = calc_rp(curr_I)
-        
-        if mode == "plasma":
-            pass
-        elif mode == "zero":
-            rp = 0
-        elif mode == "fixed_200":
-            rp = 200
+    t_vals, I_vals, U_vals = [t], [I], [U]
+    Rp_vals, T0_vals = [], []
 
-        res_t.append(t * 1e6)
-        res_I.append(curr_I)
-        res_U.append(curr_U)
-        res_Rp.append(rp)
-        res_T0.append(t0)
+    if mode == "standard":
+        Rp, T0 = get_Rp_and_T0(I)
+    elif mode == "zero_R":
+        Rp, T0 = 0.0, 0.0
+    elif mode == "const_200":
+        Rp, T0 = 200.0, 0.0
 
-        k1_I, k1_U = system_odes(curr_I, curr_U, rp)
-        k2_I, k2_U = system_odes(curr_I + (dt/2)*k1_I, curr_U + (dt/2)*k1_U, rp)
-        k3_I, k3_U = system_odes(curr_I + (dt/2)*k2_I, curr_U + (dt/2)*k2_U, rp)
-        k4_I, k4_U = system_odes(curr_I + dt*k3_I, curr_U + dt*k3_U, rp)
-        
-        curr_I += (dt/6) * (k1_I + 2*k2_I + 2*k3_I + k4_I)
-        curr_U += (dt/6) * (k1_U + 2*k2_U + 2*k3_U + k4_U)
-        t += dt
-        
-    return np.array(res_t), np.array(res_I), np.array(res_U), np.array(res_Rp), np.array(res_T0)
+    Rp_vals.append(Rp)
+    T0_vals.append(T0)
 
-#defense 
-def solve_backward(I_end, U_end, t_start_val, dt):
-    t = t_start_val
-    curr_I = I_end
-    curr_U = U_end
-    
-    res_t, res_I, res_U = [], [], []
+    def dI_dt(curr_I, curr_U):
+        if mode == "standard":
+            curr_Rp, _ = get_Rp_and_T0(curr_I)
+            R_total = R_k + curr_Rp
+        elif mode == "zero_R":
+            R_total = 0.0
+        elif mode == "const_200":
+            R_total = 200.0
 
-    while t >= -1e-9:
-        res_t.append(t * 1e6) 
-        res_I.append(curr_I)
-        res_U.append(curr_U)
+        return (curr_U - R_total * curr_I) / L_k
 
-        def get_derivatives(I_val, U_val):
-            rp_val, _ = calc_rp(I_val)
-            return system_odes(I_val, U_val, rp_val)
+    def dU_dt(curr_I):
+        return -curr_I / C_k
 
-        h = -dt
-        
-        k1_I, k1_U = get_derivatives(curr_I, curr_U)
-        k2_I, k2_U = get_derivatives(curr_I + (h/2)*k1_I, curr_U + (h/2)*k1_U)
-        k3_I, k3_U = get_derivatives(curr_I + (h/2)*k2_I, curr_U + (h/2)*k2_U)
-        k4_I, k4_U = get_derivatives(curr_I + h*k3_I, curr_U + h*k3_U)
-        
-        curr_I += (h/6) * (k1_I + 2*k2_I + 2*k3_I + k4_I)
-        curr_U += (h/6) * (k1_U + 2*k2_U + 2*k3_U + k4_U)
+    steps = int(t_max / h)
+
+    print(f"Запуск симуляции '{mode}' (шаг: {h:.1e} с, шагов: {steps})...")
+
+    for _ in range(steps):
+        k1_I = dI_dt(I, U)
+        k1_U = dU_dt(I)
+
+        k2_I = dI_dt(I + h / 2 * k1_I, U + h / 2 * k1_U)
+        k2_U = dU_dt(I + h / 2 * k1_I)
+
+        k3_I = dI_dt(I + h / 2 * k2_I, U + h / 2 * k2_U)
+        k3_U = dU_dt(I + h / 2 * k2_I)
+
+        k4_I = dI_dt(I + h * k3_I, U + h * k3_U)
+        k4_U = dU_dt(I + h * k3_I)
+
+        I = I + (h / 6) * (k1_I + 2 * k2_I + 2 * k3_I + k4_I)
+        U = U + (h / 6) * (k1_U + 2 * k2_U + 2 * k3_U + k4_U)
         t += h
-        
-    return np.array(res_t), np.array(res_I), np.array(res_U)
 
-def print_report(t, I, U, Rp, T0, dt, t_imp):
-    i_max_idx = np.argmax(I)
-    print("\n" + "="*50)
-    print(f"{'СВОДНЫЙ ОТЧЕТ ПО МОДЕЛИРОВАНИЮ':^50}")
-    print("="*50)
-    print(f"Шаг сетки (dt):            {dt*1e6:<10.3f} мкс")
-    print(f"Максимальный ток (I_max):  {I[i_max_idx]:<10.2f} А  (на {t[i_max_idx]:.1f} мкс)")
-    print(f"Длительность импульса:     {t_imp:<10.2f} мкс")
-    print(f"Напряжение в конце:        {U[-1]:<10.2f} В")
-    print(f"Макс. температура (T0):    {np.max(T0):<10.2f} К")
-    print(f"Мин. сопротивление Rp:     {np.min(Rp):<10.4f} Ом")
-    print(f"Макс. сопротивление Rp:    {np.max(Rp):<10.4f} Ом")
-    print("="*50)
+        t_vals.append(t)
+        I_vals.append(I)
+        U_vals.append(U)
 
-    print(f"\n{'ТАБЛИЦА РЕЗУЛЬТАТОВ (ВЫБОРКА)':^60}")
-    header = f"{'t, мкс':^10} | {'I, А':^10} | {'U, В':^10} | {'Rp, Ом':^10} | {'T0, К':^10}"
-    print("-" * len(header))
-    print(header)
-    print("-" * len(header))
+        if mode == "standard":
+            Rp, T0 = get_Rp_and_T0(I)
+        elif mode == "const_200":
+            Rp, T0 = (200.0, 0.0)
+        else:
+            Rp, T0 = (0.0, 0.0)
 
-    indices = np.linspace(0, len(t) - 1, 15, dtype=int)
-    
-    for idx in indices:
-        print(f"{t[idx]:^10.1f} | {I[idx]:^10.2f} | {U[idx]:^10.1f} | {Rp[idx]:^10.3f} | {T0[idx]:^10.0f}")
-    print("-" * len(header) + "\n")
+        Rp_vals.append(Rp)
+        T0_vals.append(T0)
 
-def main():
-    t_p, I_p, U_p, Rp_p, T0_p = solve_system(mode="plasma")
-    dt = 2 * 10**-6
-    
-    i_max = np.max(I_p)
-    level = 0.35 * i_max
-    idx_above = np.where(I_p >= level)[0]
-    t_s, t_e = t_p[idx_above[0]], t_p[idx_above[-1]]
-    t_imp = t_e - t_s
-    print_report(t_p, I_p, U_p, Rp_p, T0_p, dt, t_imp)
-    fig1, axes = plt.subplots(3, 2, figsize=(12, 10))
-    fig1.suptitle(f"Задание №1: Основные характеристики (Шаг сетки dt=0.1 мкс, t_имп={t_imp:.1f} мкс)", fontsize=14)
+        if mode == "standard" and I < 1:
+            break
 
-    # I(t)
-    axes[0, 0].plot(t_p, I_p, 'r', label='I(t), А')
-    axes[0, 0].axhline(y=level, color='black', linestyle='--', alpha=0.5)
-    axes[0, 0].plot([t_s, t_e], [level, level], 'blue', marker='o', markersize=4)
-    axes[0, 0].set_title("Ток в контуре")
-    axes[0, 0].grid(); axes[0, 0].legend()
+    return t_vals, I_vals, U_vals, Rp_vals, T0_vals
 
-    # U(t)
-    axes[0, 1].plot(t_p, U_p, 'b', label='U(t), В')
-    axes[0, 1].set_title("Напряжение на конденсаторе")
-    axes[0, 1].grid(); axes[0, 1].legend()
 
-    # Rp(t)
-    axes[1, 0].plot(t_p, Rp_p, 'g', label='Rp(t), Ом')
-    axes[1, 0].set_title("Сопротивление плазмы")
-    axes[1, 0].grid(); axes[1, 0].legend()
+def run_all_tasks():
+    h_std = 2e-6
+    t_max_std = 1000e-6
+    t_std, I_std, U_std, Rp_std, T0_std = solve_circuit(t_max_std,
+                                                        h_std,
+                                                        mode="standard")
 
-    # I(t) * Rp(t)
-    axes[1, 1].plot(t_p, I_p * Rp_p, 'purple', label='I(t)*Rp(t), В')
-    axes[1, 1].set_title("Напряжение на плазменной трубке")
-    axes[1, 1].grid(); axes[1, 1].legend()
+    print(f"Левый край:\n\tНапряжение: {U_std[0]:.6f}, Ток: {I_std[0]:.6f}")
+    print(
+        f"Правый край:\n\tНапряжение: {U_std[-1]:.6f}, Ток: {I_std[-1]:.6f}, время: {t_std[-1]:.6f}"
+    )
 
-    # T0(t)
-    axes[2, 0].plot(t_p, T0_p, 'orange', label='T0(t), K')
-    axes[2, 0].set_title("Температура на оси")
-    axes[2, 0].set_xlabel("Время, мкс")
-    axes[2, 0].grid(); axes[2, 0].legend()
-    
-    axes[2, 1].axis('off')
+    IRp_std = [I_std[i] * Rp_std[i] for i in range(len(I_std))]
 
-    fig1.savefig("task_1-4.png")
-    t_z, I_z, _, _, _ = solve_system(mode="zero", t_end=1500e-6)
-    t_f, I_f, _, _, _ = solve_system(mode="fixed_200", t_end=20e-6)
+    t_std_mks = [t * 1e6 for t in t_std]
 
-    fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-    
-    ax1.plot(t_z, I_z, color='brown')
-    ax1.set_title("Задание №2: Rk + Rp = 0 (Незатухающие)")
-    ax1.set_xlabel("Время, мкс"); ax1.grid()
+    fig, axs = plt.subplots(3, 2, figsize=(14, 10))
+    fig.suptitle('Задача 1: Графики зависимости параметров от времени',
+                 fontsize=14)
 
-    ax2.plot(t_f, I_f, color='black')
-    ax2.set_title("Задание №3: Rk + Rp = 200 Ом (Апериодический)")
-    ax2.set_xlabel("Время, мкс"); ax2.grid()
+    axs[0, 0].plot(t_std_mks, I_std, 'b')
+    axs[0, 0].set_title('Ток I(t), A')
+    axs[0, 0].grid()
+
+    axs[0, 1].plot(t_std_mks, U_std, 'r')
+    axs[0, 1].set_title('Напряжение U(t), В')
+    axs[0, 1].grid()
+
+    axs[1, 0].plot(t_std_mks, Rp_std, 'g')
+    axs[1, 0].set_title('Сопротивление плазмы Rp(t), Ом')
+    axs[1, 0].grid()
+
+    axs[1, 1].plot(t_std_mks, IRp_std, 'm')
+    axs[1, 1].set_title('Произведение I(t) * Rp(t), В')
+    axs[1, 1].grid()
+
+    axs[2, 0].plot(t_std_mks, T0_std, 'k')
+    axs[2, 0].set_title('Температура в центре T0(t), K')
+    axs[2, 0].set_xlabel('Время, мкс')
+    axs[2, 0].grid()
+
+    axs[2, 1].axis('off')
 
     plt.tight_layout()
-    fig2.savefig("task_2-3.png")
-    
-    I_end = I_p[-1]
-    U_end = U_p[-1]
-    t_end_val = t_p[-1] / 1e6
-    
-    t_b, I_b, U_b = solve_backward(I_end, U_end, t_end_val, dt)
-
-    fig_rev, (ax_i, ax_u) = plt.subplots(2, 1, figsize=(10, 8))
-    fig_rev.suptitle("Тест на обратимость решения (Forward vs Backward)", fontsize=14)
-
-    ax_i.plot(t_p, I_p, color='red', label='Прямой ход (I forward)', linewidth=3, alpha=0.5)
-    ax_i.plot(t_b, I_b, color='blue', linestyle='--', label='Обратный ход (I backward)', linewidth=2)
-    ax_i.set_ylabel("Ток I, А")
-    ax_i.grid(True, linestyle=':')
-    ax_i.legend()
-
-    ax_u.plot(t_p, U_p, color='darkgreen', label='Прямой ход (U forward)', linewidth=3, alpha=0.5)
-    ax_u.plot(t_b, U_b, color='lime', linestyle='--', label='Обратный ход (U backward)', linewidth=2)
-    ax_u.set_ylabel("Напряжение U, В")
-    ax_u.set_xlabel("Время, мкс")
-    ax_u.grid(True, linestyle=':')
-    ax_u.legend()
-
-    plt.tight_layout()
-    fig_rev.savefig("reversibility_full.png")
-    i_end_back = I_b[-1]
-    u_end_back = U_b[-1]
     plt.show()
-    print(i_end_back, u_end_back)
+
+    I_max = max(I_std)
+    threshold = 0.35 * I_max
+
+    t1, t2 = None, None
+    for i in range(len(I_std) - 1):
+
+        if I_std[i] <= threshold and I_std[i + 1] >= threshold:
+            slope = (I_std[i + 1] - I_std[i]) / h_std
+            t1 = t_std[i] + (threshold - I_std[i]) / slope
+
+        if I_std[i] >= threshold and I_std[i + 1] <= threshold:
+            slope = (I_std[i + 1] - I_std[i]) / h_std
+            t2 = t_std[i] + (threshold - I_std[i]) / slope
+
+    if t1 and t2:
+        t_imp = (t2 - t1) * 1e6
+        print(f"\n--- РЕЗУЛЬТАТЫ ЗАДАЧИ 4 ---")
+        print(f"Максимальный ток (I_max) = {I_max:.1f} А")
+        print(f"Порог 0.35 * I_max = {threshold:.1f} А")
+        print(f"Длительность импульса t_imp = {t_imp:.1f} мкс")
+
+    t_max_zero = 3e-1
+    t_zero, I_zero, _, _, _ = solve_circuit(t_max_zero, 1e-4, mode="zero_R")
+
+    peaks_t = []
+    for i in range(1, len(I_zero) - 1):
+        if I_zero[i] > I_zero[i - 1] and I_zero[i] > I_zero[i + 1]:
+            peaks_t.append(t_zero[i])
+
+    peaks_t = []
+    peaks_I = []
+
+    for i in range(1, len(I_zero) - 1):
+        if I_zero[i] > I_zero[i - 1] and I_zero[i] > I_zero[i + 1]:
+            peaks_t.append(t_zero[i])
+            peaks_I.append(I_zero[i])
+
+    if len(peaks_t) >= 3:
+        T_first = peaks_t[1] - peaks_t[0]
+        T_last = peaks_t[-1] - peaks_t[-2]
+
+        I_first = peaks_I[0]
+        I_last = peaks_I[-1]
+
+        # print(f"Период 1-й волны:        {T_first * 1e6:.4f} мкс")
+        # print(f"Период последней волны:  {T_last * 1e6:.4f} мкс")
+        # print(
+        # f"Разница периодов:        {abs(T_first - T_last) * 1e6:.6f} мкс")
+
+        print(f"\nАмплитуда 1-го пика:     {I_first:.6f} А")
+        print(f"Амплитуда {len(peaks_I)}-го пика:    {I_last:.6f} А")
+        print(
+            f"Потеря амплитуды за {len(peaks_I)} циклов: {abs(I_first - I_last):.2e} А"
+        )
+    # =========================================================
+
+    plt.figure(figsize=(10, 4))
+    plt.plot([t * 1e6 for t in t_zero], I_zero, color='orange')
+    plt.title('Задача 2: I(t) при Rk + Rp = 0 (Незатухающие колебания)')
+    plt.xlabel('Время, мкс')
+    plt.ylabel('Ток, А')
+    plt.grid()
+    plt.show()
+
+    h_fast = 2e-6
+    t_max_const = 20e-6
+    t_const, I_const, _, _, _ = solve_circuit(t_max_const,
+                                              h_fast,
+                                              mode="const_200")
+
+    plt.figure(figsize=(10, 4))
+    plt.plot([t * 1e6 for t in t_const], I_const, color='red')
+    plt.title('Задача 3: I(t) при R_total = 200 Ом')
+    plt.xlabel('Время, мс')
+    plt.ylabel('Ток, А')
+    plt.grid()
+    plt.show()
+
 
 if __name__ == "__main__":
-    main()
+    run_all_tasks()
