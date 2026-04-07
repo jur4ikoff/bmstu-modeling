@@ -238,7 +238,7 @@ def find_x_max(step: float, eps: float) -> float:
     """Поиск x_max по правилу Рунге: сравнение Эйлера с шагом step и step/2.
     Относительная погрешность < eps.
     """
-    x_limit = 3.0
+    x_limit = 3
     data_h = euler_task3(x_limit, step)
     data_h2 = euler_task3(x_limit, step / 2.0)
 
