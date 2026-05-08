@@ -92,7 +92,6 @@ def find_xmax(h_base):
             return x_end
 
         x_last_good = x_end
-        print(x_check, x_end)
         x_check = x_end
 
     return x_last_good
@@ -101,11 +100,10 @@ def find_xmax(h_base):
 def task_03():
     print("Уравнение: u' = x2 + u2, u(0) = 0")
 
-    h_euler = 5e-7
+    h_euler = 1e-7
     h_output = 0.01
 
     # xmax = find_xmax(h_euler)
-    # print(xmax)
     xmax = 2.0
 
     n = int(xmax / h_euler) + 1

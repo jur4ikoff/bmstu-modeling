@@ -7,7 +7,7 @@ L_k = 187e-6
 C_k = 268e-6
 R_k = 0.25
 U_0 = 1400.0
-I_0 = 0.5
+I_0 = 0.3
 T_w = 2000.0
 
 table1_I = [0.5, 1, 5, 10, 50, 200, 400, 800, 1200]
@@ -40,6 +40,7 @@ def interpolate(x, x_data, y_data):
 
 
 def integrate_sigma(T0, m, steps=40):
+    """Составная формула Симпсона (Simpson's 1/3 rule)"""
     h = 1.0 / steps
     integral = 0.0
 
@@ -151,7 +152,7 @@ def solve_circuit(t_max, h, mode="standard"):
     return t_vals, I_vals, U_vals, Rp_vals, T0_vals
 
 
-def run_all_tasks():
+def main():
     h_std = 2e-6
     t_max_std = 1000e-6
     t_std, I_std, U_std, Rp_std, T0_std = solve_circuit(t_max_std,
@@ -162,6 +163,11 @@ def run_all_tasks():
     print(
         f"Правый край:\n\tНапряжение: {U_std[-1]:.6f}, Ток: {I_std[-1]:.6f}, время: {t_std[-1]:.6f}"
     )
+    print("Вывод таблицы")
+    for i in range(0, len(t_std)):
+        if abs(t_std[i] - 0.0006) < 0.000001: 
+            print(f"| t: {t_std[i]}\t| i: {I_std[i]}\t | u: {U_std[i]}\t |")
+        
 
     IRp_std = [I_std[i] * Rp_std[i] for i in range(len(I_std))]
 
@@ -196,6 +202,8 @@ def run_all_tasks():
 
     plt.tight_layout()
     plt.show()
+
+    # =========================================
 
     I_max = max(I_std)
     threshold = 0.35 * I_max
@@ -251,8 +259,7 @@ def run_all_tasks():
         print(
             f"Потеря амплитуды за {len(peaks_I)} циклов: {abs(I_first - I_last):.2e} А"
         )
-    # =========================================================
-
+    
     plt.figure(figsize=(10, 4))
     plt.plot([t * 1e6 for t in t_zero], I_zero, color='orange')
     plt.title('Задача 2: I(t) при Rk + Rp = 0 (Незатухающие колебания)')
@@ -260,6 +267,8 @@ def run_all_tasks():
     plt.ylabel('Ток, А')
     plt.grid()
     plt.show()
+
+    # =========================================================
 
     h_fast = 2e-6
     t_max_const = 20e-6
@@ -277,4 +286,4 @@ def run_all_tasks():
 
 
 if __name__ == "__main__":
-    run_all_tasks()
+    main()
